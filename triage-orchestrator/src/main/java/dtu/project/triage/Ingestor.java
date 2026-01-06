@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import static dtu.project.triage.Tuples.*;
+import static dtu.project.triage.Audit.log;
+
 
 public class Ingestor {
     public static void main(String[] args) throws Exception {
@@ -33,11 +35,21 @@ public class Ingestor {
 
             // CASE tuple: ("CASE", caseId, filePath, createdAt)
             board.put(CASE, caseId, f.getAbsolutePath(), createdAt);
+            Audit.log(board, "INGESTOR", "ingestor", "CASE_CREATED",
+        	    "{\"caseId\":\"" + caseId + "\",\"file\":\"" + f.getName() + "\",\"path\":\"" + f.getAbsolutePath().replace("\\","\\\\") + "\"}");
+
 
             // TASK tuple: ("TASK", taskId, caseId, "INFER", "NEW", createdAt)
             board.put(TASK, taskId, caseId, INFER, NEW, createdAt);
+            Audit.log(board, "INGESTOR", "ingestor", "TASK_CREATED",
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"type\":\"" + INFER + "\",\"state\":\"" + NEW + "\"}");
+            board.put(AVAILABLE, taskId, caseId, createdAt);
+            Audit.log(board, "INGESTOR", "ingestor", "TASK_ENQUEUED",
+                    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
 
-            System.out.println("✅ Ingested case: " + caseId + " file=" + f.getName() + " task=" + taskId);
+
+
+            System.out.println("Ã¢Å“â€¦ Ingested case: " + caseId + " file=" + f.getName() + " task=" + taskId);
         }
     }
 }

@@ -12,7 +12,12 @@ public final class Tuples {
     // Task states
     public static final String NEW = "NEW";
     public static final String DONE = "DONE";
+    public static final String AVAILABLE = "AVAILABLE";
+    public static final String IN_PROGRESS = "IN_PROGRESS";
+    public static final String DONE_T = "DONE"; // renamed to avoid confusion with task state string
+
 
     // Task type (for later extension)
     public static final String INFER = "INFER";
+    public static final String AUDIT = "AUDIT";
 }

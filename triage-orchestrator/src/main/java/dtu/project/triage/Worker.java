@@ -18,19 +18,27 @@ public class Worker {
         RemoteSpace board = new RemoteSpace(spaceUri);
         Random rnd = new Random();
 
-        System.out.println("✅ Worker started: " + workerId + " space=" + spaceUri);
+        System.out.println("Ã¢Å“â€¦ Worker started: " + workerId + " space=" + spaceUri);
 
         while (true) {
-            // Take next NEW inference task:
-            // ("TASK", taskId, caseId, "INFER", "NEW", createdAt)
-            Object[] task = board.get(
-        	new ActualField(TASK),
-        	new FormalField(String.class),   // taskId
-        	new FormalField(String.class),   // caseId
-        	new ActualField(INFER),
-        	new ActualField(NEW),
-        	new FormalField(String.class)    // createdAt
+            // Take next available task (this is the atomic claim):
+	    // ("AVAILABLE", taskId, caseId, createdAt)
+	    Object[] avail = board.get(
+        	    new ActualField(AVAILABLE),
+        	    new FormalField(String.class),
+        	    new FormalField(String.class),
+        	    new FormalField(String.class)
 	    );
+
+	    String taskId = (String) avail[1];
+	    String caseId = (String) avail[2];
+	    String createdAt = (String) avail[3];
+
+	    // Mark in progress
+	    board.put(IN_PROGRESS, taskId, caseId, workerId, Instant.now().toString());
+	    Audit.log(board, "WORKER", workerId, "TASK_STARTED",
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+
 
 
 
@@ -41,6 +49,8 @@ public class Worker {
             // Claim tuple (simple first version):
             // ("CLAIM", taskId, workerId, claimedAt)
             board.put(CLAIM, taskId, workerId, Instant.now().toString());
+	    Audit.log(board, "WORKER", workerId, "TASK_CLAIMED",
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
 
             // Fake ML inference (for now): score + uncertainty
             double score = rnd.nextDouble();          // 0..1
@@ -48,11 +58,17 @@ public class Worker {
 
             // RESULT tuple: ("RESULT", caseId, taskId, score, uncertainty, workerId, finishedAt)
             board.put(RESULT, caseId, taskId, score, uncertainty, workerId, Instant.now().toString());
+	    Audit.log(board, "WORKER", workerId, "RESULT_WRITTEN",
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
+	    board.put(DONE_T, taskId, caseId, workerId, Instant.now().toString());
+            Audit.log(board, "WORKER", workerId, "TASK_DONE",
+       		    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+
 
             // Mark task done (we re-put TASK as DONE)
             board.put(TASK, taskId, caseId, INFER, DONE, createdAt);
 
-            System.out.println("✅ Done task=" + taskId + " case=" + caseId + " score=" + score + " unc=" + uncertainty);
+            System.out.println("Ã¢Å“â€¦ Done task=" + taskId + " case=" + caseId + " score=" + score + " unc=" + uncertainty);
         }
     }
 }
