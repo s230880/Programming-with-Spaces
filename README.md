@@ -1,6 +1,5 @@
-# Project XXX - GoldenDane ML Triage Orchestrator (jSpace)
+# Project 17 - ML Triage Orchestrator (jSpace)
 
-Replace XXX with your group number.
 
 
 ## Abstract
