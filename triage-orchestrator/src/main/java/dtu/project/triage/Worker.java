@@ -13,12 +13,17 @@ import static dtu.project.triage.Tuples.*;
 public class Worker {
     public static void main(String[] args) throws Exception {
         String workerId = (args.length > 0) ? args[0] : "worker-" + ProcessHandle.current().pid();
+	int sleepMs = 0;
+	if (args.length > 1) {
+    	    sleepMs = Integer.parseInt(args[1]);
+	}
+
         String spaceUri = System.getenv().getOrDefault("SPACE_URI", "tcp://localhost:9001/board?conn");
 
         RemoteSpace board = new RemoteSpace(spaceUri);
         Random rnd = new Random();
 
-        System.out.println("Ã¢Å“â€¦ Worker started: " + workerId + " space=" + spaceUri);
+        System.out.println(" Worker started: " + workerId + " space=" + spaceUri);
 
         while (true) {
             // Take next available task (this is the atomic claim):
@@ -33,42 +38,70 @@ public class Worker {
 	    String taskId = (String) avail[1];
 	    String caseId = (String) avail[2];
 	    String createdAt = (String) avail[3];
+	    // Lease settings (ms)
+	    long leaseMs = Long.parseLong(System.getenv().getOrDefault("LEASE_MS", "15000"));
 
-	    // Mark in progress
-	    board.put(IN_PROGRESS, taskId, caseId, workerId, Instant.now().toString());
+	    String startedAt = Instant.now().toString();
+	    String leaseUntil = Instant.now().plusMillis(leaseMs).toString();
+
+	    // Mark in progress with a lease deadline
+	    board.put(IN_PROGRESS, taskId, caseId, workerId, startedAt, leaseUntil);
+
 	    Audit.log(board, "WORKER", workerId, "TASK_STARTED",
-        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
 
 
 
 
-            String taskId = (String) task[1];
-            String caseId = (String) task[2];
-            String createdAt = (String) task[5];
 
-            // Claim tuple (simple first version):
-            // ("CLAIM", taskId, workerId, claimedAt)
-            board.put(CLAIM, taskId, workerId, Instant.now().toString());
-	    Audit.log(board, "WORKER", workerId, "TASK_CLAIMED",
-        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
 
+            
             // Fake ML inference (for now): score + uncertainty
             double score = rnd.nextDouble();          // 0..1
             double uncertainty = rnd.nextDouble();    // 0..1
+	    if (sleepMs > 0) {
+    		Thread.sleep(sleepMs);
+	    }
+
+	    boolean leaseValid = true;
+	    try {
+    		// Try to "finalize" by removing our own in-progress tuple.
+    		board.get(
+            		new ActualField(IN_PROGRESS),
+            		new ActualField(taskId),
+            		new ActualField(caseId),
+            		new ActualField(workerId),
+            		new ActualField(startedAt),
+            		new ActualField(leaseUntil)
+    		);
+	    } catch (Exception e) {
+    		leaseValid = false;
+	    }
+
+if (!leaseValid) {
+    Audit.log(board, "WORKER", workerId, "TASK_STALE_RESULT_DROPPED",
+            "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
+    System.out.println("⚠️ Lease expired, dropping result taskId=" + taskId);
+    continue; // go back to get another AVAILABLE task
+}
+
+
 
             // RESULT tuple: ("RESULT", caseId, taskId, score, uncertainty, workerId, finishedAt)
             board.put(RESULT, caseId, taskId, score, uncertainty, workerId, Instant.now().toString());
 	    Audit.log(board, "WORKER", workerId, "RESULT_WRITTEN",
         	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
+
+	    
+
 	    board.put(DONE_T, taskId, caseId, workerId, Instant.now().toString());
             Audit.log(board, "WORKER", workerId, "TASK_DONE",
        		    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
 
 
-            // Mark task done (we re-put TASK as DONE)
-            board.put(TASK, taskId, caseId, INFER, DONE, createdAt);
 
-            System.out.println("Ã¢Å“â€¦ Done task=" + taskId + " case=" + caseId + " score=" + score + " unc=" + uncertainty);
+
+            System.out.println(" Done task=" + taskId + " case=" + caseId + " score=" + score + " unc=" + uncertainty);
         }
     }
 }
