@@ -81,22 +81,38 @@ public class Worker {
 if (!leaseValid) {
     Audit.log(board, "WORKER", workerId, "TASK_STALE_RESULT_DROPPED",
             "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
-    System.out.println("⚠️ Lease expired, dropping result taskId=" + taskId);
+    System.out.println("âš ï¸ Lease expired, dropping result taskId=" + taskId);
     continue; // go back to get another AVAILABLE task
 }
 
 
 
-            // RESULT tuple: ("RESULT", caseId, taskId, score, uncertainty, workerId, finishedAt)
-            board.put(RESULT, caseId, taskId, score, uncertainty, workerId, Instant.now().toString());
-	    Audit.log(board, "WORKER", workerId, "RESULT_WRITTEN",
-        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
+            double threshold = Double.parseDouble(System.getenv().getOrDefault("REVIEW_THRESHOLD", "0.75"));
+	    String finishedAt = Instant.now().toString();
 
-	    
+	    if (uncertainty >= threshold) {
+    		// Send to human review queue (non-blocking)
+    		board.put(REVIEW_REQUEST, caseId, taskId, score, uncertainty, workerId, finishedAt);
 
-	    board.put(DONE_T, taskId, caseId, workerId, Instant.now().toString());
-            Audit.log(board, "WORKER", workerId, "TASK_DONE",
-       		    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+    		Audit.log(board, "WORKER", workerId, "REVIEW_REQUESTED",
+            		"{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
+
+    		// Optionally still store model suggestion:
+    		board.put(RESULT, caseId, taskId, score, uncertainty, workerId, finishedAt);
+    		Audit.log(board, "WORKER", workerId, "RESULT_WRITTEN",
+            		"{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
+
+	    } else {
+    		// Normal result path
+    		board.put(RESULT, caseId, taskId, score, uncertainty, workerId, finishedAt);
+    		Audit.log(board, "WORKER", workerId, "RESULT_WRITTEN",
+            		"{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
+	    }
+
+	    board.put(DONE_T, taskId, caseId, workerId, finishedAt);
+	    Audit.log(board, "WORKER", workerId, "TASK_DONE",
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+
 
 
 

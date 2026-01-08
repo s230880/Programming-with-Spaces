@@ -15,6 +15,8 @@ public final class Tuples {
     public static final String AVAILABLE = "AVAILABLE";
     public static final String IN_PROGRESS = "IN_PROGRESS";
     public static final String DONE_T = "DONE"; // renamed to avoid confusion with task state string
+    public static final String REVIEW_REQUEST = "REVIEW_REQUEST";
+    public static final String REVIEW_DECISION = "REVIEW_DECISION";
 
 
     // Task type (for later extension)
