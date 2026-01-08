@@ -32,12 +32,14 @@ public class Worker {
         	    new ActualField(AVAILABLE),
         	    new FormalField(String.class),
         	    new FormalField(String.class),
-        	    new FormalField(String.class)
+        	    new FormalField(String.class),
+		    new FormalField(Integer.class)
 	    );
 
 	    String taskId = (String) avail[1];
 	    String caseId = (String) avail[2];
 	    String createdAt = (String) avail[3];
+	    int attempt = (Integer) avail[4];
 	    // Lease settings (ms)
 	    long leaseMs = Long.parseLong(System.getenv().getOrDefault("LEASE_MS", "15000"));
 
@@ -45,10 +47,10 @@ public class Worker {
 	    String leaseUntil = Instant.now().plusMillis(leaseMs).toString();
 
 	    // Mark in progress with a lease deadline
-	    board.put(IN_PROGRESS, taskId, caseId, workerId, startedAt, leaseUntil);
+	    board.put(IN_PROGRESS, taskId, caseId, workerId, startedAt, leaseUntil, attempt);
 
 	    Audit.log(board, "WORKER", workerId, "TASK_STARTED",
-        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"attempt\":" + attempt + ",\"leaseUntil\":\"" + leaseUntil + "\"}");
 
 
 
@@ -72,7 +74,8 @@ public class Worker {
             		new ActualField(caseId),
             		new ActualField(workerId),
             		new ActualField(startedAt),
-            		new ActualField(leaseUntil)
+            		new ActualField(leaseUntil),
+			new ActualField(attempt)
     		);
 	    } catch (Exception e) {
     		leaseValid = false;
@@ -80,8 +83,8 @@ public class Worker {
 
 if (!leaseValid) {
     Audit.log(board, "WORKER", workerId, "TASK_STALE_RESULT_DROPPED",
-            "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
-    System.out.println("âš ï¸ Lease expired, dropping result taskId=" + taskId);
+            "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"attempt\":" + attempt + ",\"leaseUntil\":\"" + leaseUntil + "\"}");
+    System.out.println("... Lease expired, dropping result taskId=" + taskId);
     continue; // go back to get another AVAILABLE task
 }
 
@@ -109,9 +112,9 @@ if (!leaseValid) {
             		"{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"score\":" + score + ",\"uncertainty\":" + uncertainty + "}");
 	    }
 
-	    board.put(DONE_T, taskId, caseId, workerId, finishedAt);
+	    board.put(DONE_T, taskId, caseId, workerId, finishedAt, attempt);
 	    Audit.log(board, "WORKER", workerId, "TASK_DONE",
-        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"attempt\":" + attempt + "}");
 
 
 

@@ -43,13 +43,16 @@ public class Ingestor {
             board.put(TASK, taskId, caseId, INFER, NEW, createdAt);
             Audit.log(board, "INGESTOR", "ingestor", "TASK_CREATED",
         	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"type\":\"" + INFER + "\",\"state\":\"" + NEW + "\"}");
-            board.put(AVAILABLE, taskId, caseId, createdAt);
-            Audit.log(board, "INGESTOR", "ingestor", "TASK_ENQUEUED",
-                    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\"}");
+            int attempt = 0;
+	    board.put(AVAILABLE, taskId, caseId, Instant.now().toString(), attempt);
+
+	    Audit.log(board, "INGESTOR", "ingestor", "TASK_ENQUEUED",
+        	    "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"attempt\":" + attempt + "}");
 
 
 
-            System.out.println("Ã¢Å“â€¦ Ingested case: " + caseId + " file=" + f.getName() + " task=" + taskId);
+
+            System.out.println("...Ingested case: " + caseId + " file=" + f.getName() + " task=" + taskId);
         }
     }
 }

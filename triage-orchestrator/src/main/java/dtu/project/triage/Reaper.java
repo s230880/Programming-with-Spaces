@@ -14,22 +14,24 @@ public class Reaper {
     public static void main(String[] args) throws Exception {
         String spaceUri = System.getenv().getOrDefault("SPACE_URI", "tcp://localhost:9001/board?conn");
         long intervalMs = Long.parseLong(System.getenv().getOrDefault("REAPER_INTERVAL_MS", "2000"));
+        int maxAttempts = Integer.parseInt(System.getenv().getOrDefault("MAX_ATTEMPTS", "3"));
 
         RemoteSpace board = new RemoteSpace(spaceUri);
 
-        System.out.println("🧹 Reaper started. intervalMs=" + intervalMs + " space=" + spaceUri);
+        System.out.println("... Reaper started. intervalMs=" + intervalMs +
+                           " maxAttempts=" + maxAttempts +
+                           " space=" + spaceUri);
 
         while (true) {
-            Instant now = Instant.now();
-
-            // ("IN_PROGRESS", taskId, caseId, workerId, startedAt, leaseUntil)
+            // ("IN_PROGRESS", taskId, caseId, workerId, startedAt, leaseUntil, attempt)
             List<Object[]> inprog = board.queryAll(
                     new ActualField(IN_PROGRESS),
                     new FormalField(String.class),
                     new FormalField(String.class),
                     new FormalField(String.class),
                     new FormalField(String.class),
-                    new FormalField(String.class)
+                    new FormalField(String.class),
+                    new FormalField(Integer.class)
             );
 
             for (Object[] t : inprog) {
@@ -38,16 +40,9 @@ public class Reaper {
                 String workerId = (String) t[3];
                 String startedAt = (String) t[4];
                 String leaseUntil = (String) t[5];
+                int attempt = (Integer) t[6];
 
-                Instant until;
-                try {
-                    until = Instant.parse(leaseUntil);
-                } catch (Exception e) {
-                    continue; // ignore malformed
-                }
-
-                if (until.isBefore(now)) {
-                    // Try to remove and requeue. Race-safe: worker might finish at same time.
+                if (Instant.parse(leaseUntil).isBefore(Instant.now())) {
                     try {
                         board.get(
                                 new ActualField(IN_PROGRESS),
@@ -55,18 +50,53 @@ public class Reaper {
                                 new ActualField(caseId),
                                 new ActualField(workerId),
                                 new ActualField(startedAt),
-                                new ActualField(leaseUntil)
+                                new ActualField(leaseUntil),
+                                new ActualField(attempt)
                         );
 
-                        // Put back into queue
-                        board.put(AVAILABLE, taskId, caseId, Instant.now().toString());
+                        int nextAttempt = attempt + 1;
 
-                        Audit.log(board, "REAPER", "reaper", "TASK_REQUEUED_TIMEOUT",
-                                "{\"taskId\":\"" + taskId + "\",\"caseId\":\"" + caseId + "\",\"previousWorker\":\"" + workerId + "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
+                        if (nextAttempt >= maxAttempts) {
+                            board.put(
+                                    REVIEW_TIMEOUT,
+                                    caseId,
+                                    taskId,
+                                    nextAttempt,
+                                    workerId,
+                                    leaseUntil,
+                                    Instant.now().toString()
+                            );
 
-                        System.out.println("♻️ Requeued taskId=" + taskId + " caseId=" + caseId + " (expired lease)");
+                            Audit.log(board, "REAPER", "reaper", "TASK_ESCALATED_TIMEOUT",
+                                    "{\"taskId\":\"" + taskId +
+                                    "\",\"caseId\":\"" + caseId +
+                                    "\",\"attempt\":" + nextAttempt +
+                                    ",\"previousWorker\":\"" + workerId +
+                                    "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
+
+                        } else {
+                            board.put(
+                                    AVAILABLE,
+                                    taskId,
+                                    caseId,
+                                    Instant.now().toString(),
+                                    nextAttempt
+                            );
+
+                            Audit.log(board, "REAPER", "reaper", "TASK_REQUEUED_TIMEOUT",
+                                    "{\"taskId\":\"" + taskId +
+                                    "\",\"caseId\":\"" + caseId +
+                                    "\",\"attempt\":" + nextAttempt +
+                                    ",\"previousWorker\":\"" + workerId +
+                                    "\",\"leaseUntil\":\"" + leaseUntil + "\"}");
+                        }
+
+                        System.out.println("... Handled expired lease for taskId=" + taskId +
+                                           " caseId=" + caseId +
+                                           " attempt=" + nextAttempt);
+
                     } catch (Exception ignored) {
-                        // Someone else removed it (finished or another reaper), that's fine.
+                        // Worker finished or another reaper won the race
                     }
                 }
             }

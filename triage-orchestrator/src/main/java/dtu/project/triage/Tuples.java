@@ -17,6 +17,9 @@ public final class Tuples {
     public static final String DONE_T = "DONE"; // renamed to avoid confusion with task state string
     public static final String REVIEW_REQUEST = "REVIEW_REQUEST";
     public static final String REVIEW_DECISION = "REVIEW_DECISION";
+    public static final String REVIEW_TIMEOUT = "REVIEW_TIMEOUT";
+    public static final String FAILED = "FAILED"; // optional
+
 
 
     // Task type (for later extension)
