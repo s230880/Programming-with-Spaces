@@ -20,13 +20,15 @@ public class Reviewer {
         Scanner sc = new Scanner(System.in);
 
         System.out.println("Reviewer started: " + reviewerId);
-        System.out.println("Type 'list' to show requests, 'take' to decide one, 'quit' to exit.");
+        System.out.println("Commands: list | take | quit");
 
         while (true) {
             System.out.print("> ");
             String cmd = sc.nextLine().trim().toLowerCase();
 
-            if (cmd.equals("quit") || cmd.equals("exit")) break;
+            if (cmd.equals("quit") || cmd.equals("exit")) {
+                break;
+            }
 
             if (cmd.equals("list")) {
                 // ("REVIEW_REQUEST", caseId, taskId, score, uncertainty, workerId, createdAt)
@@ -42,13 +44,16 @@ public class Reviewer {
 
                 System.out.println("Review requests: " + reqs.size());
                 for (Object[] r : reqs) {
-                    System.out.println("case=" + r[1] + " task=" + r[2] + " score=" + r[3] + " unc=" + r[4] + " from=" + r[5] + " at=" + r[6]);
+                    System.out.println("case=" + r[1] + " task=" + r[2] +
+                            " score=" + r[3] + " unc=" + r[4] +
+                            " from=" + r[5] + " at=" + r[6]);
                 }
                 continue;
             }
 
             if (cmd.equals("take")) {
-                Object[] r = board.get(
+                // NON-BLOCKING take: returns null if none exists (prevents freezing)
+                Object[] r = board.getp(
                         new ActualField(REVIEW_REQUEST),
                         new FormalField(String.class),
                         new FormalField(String.class),
@@ -58,19 +63,39 @@ public class Reviewer {
                         new FormalField(String.class)
                 );
 
+                if (r == null) {
+                    System.out.println("No review requests available right now.");
+                    continue;
+                }
+
                 String caseId = (String) r[1];
                 String taskId = (String) r[2];
                 double score = (Double) r[3];
                 double unc = (Double) r[4];
+                String fromWorker = (String) r[5];
+                String createdAt = (String) r[6];
 
                 System.out.println("Taking request:");
-                System.out.println("case=" + caseId + " task=" + taskId + " score=" + score + " unc=" + unc);
-                System.out.print("Decision (approve/reject): ");
-                String decision = sc.nextLine().trim().toLowerCase();
+                System.out.println("case=" + caseId + " task=" + taskId +
+                        " score=" + score + " unc=" + unc +
+                        " from=" + fromWorker + " at=" + createdAt);
 
-                if (!decision.equals("approve") && !decision.equals("reject")) {
-                    System.out.println("Invalid decision, putting request back.");
-                    board.put(REVIEW_REQUEST, caseId, taskId, score, unc, (String) r[5], (String) r[6]);
+                // Keep asking until valid answer (smooth UX)
+                String decision;
+                while (true) {
+                    System.out.print("Decision (approve/reject/back): ");
+                    decision = sc.nextLine().trim().toLowerCase();
+
+                    if (decision.equals("approve") || decision.equals("reject") || decision.equals("back")) {
+                        break;
+                    }
+                    System.out.println("Please type: approve | reject | back");
+                }
+
+                if (decision.equals("back")) {
+                    // Put it back exactly as it was
+                    board.put(REVIEW_REQUEST, caseId, taskId, score, unc, fromWorker, createdAt);
+                    System.out.println("Returned request to queue.");
                     continue;
                 }
 
