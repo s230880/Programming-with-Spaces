@@ -162,29 +162,39 @@ mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Reaper
 
 
 Terminal 3 - worker 1
+
 cd triage-orchestrator
+
 mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Worker -Dexec.args="worker-1 0"
 
 
 Terminal 4 - worker 2
+
 cd triage-orchestrator
+
 mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Worker -Dexec.args="worker-2 0"
 
 
 Terminal 6 - viewer(uncertainty ranking)
+
 cd triage-orchestrator
+
 mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Viewer
 
 
 
 Terminal 7 - AuditViewer
+
 cd triage-orchestrator
+
 mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.AuditViewer
 
 
 
 Terminal 8 - Reviwer(Human decision)
+
 cd triage-orchestrator
+
 mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Reviewer -Dexec.args="reviewer-1"
 
 ##Option B (Distributed demo) 
