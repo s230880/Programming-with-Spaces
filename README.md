@@ -92,6 +92,9 @@ We represent work using tuples and implement a lease so task ownership expires a
 
 
 
+
+
+
 #### Why this is a coordination achievement
 
 - **Mutual exclusion / atomic claim:** `get(AVAILABLE, …)` ensures only one worker claims a task.
@@ -133,7 +136,7 @@ jSpace must be installed into your local Maven repository.
 3. Open a terminal in `jSpace-master/` (where `pom.xml` is located)  
 4. Run:
 
-```bash
+
 mvn clean verify
 mvn install
 
