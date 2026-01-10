@@ -1,95 +1,210 @@
-# Project 17 - ML Triage Orchestrator (jSpace)
-
-
+# Project 017 - ML Triage Orchestrator
 
 ## Abstract
 
-This project builds a distributed “factory line” for running ML inference on incoming cases (e.g., hospital images or engineering inspection items) and sending the most important cases to a human reviewer first. The system is coordinated using a shared tuple space (jSpace/pSpaces): components do not call each other directly, they communicate by placing and taking tuples (small structured messages) in the tuple space.
+This project implements a distributed triage pipeline for running (mock) ML inference on incoming “cases” and ensuring that uncertain cases can be routed to human review, while keeping the system fault-tolerant and auditable.
 
-How it works:
-1) An Ingestor creates a CASE tuple for each incoming case and a TASK tuple that says “run inference on this case”.
-2) A pool of Worker processes (running on one or multiple computers) takes tasks from the tuple space, claims them using a lease, runs ML inference (or a plug-in model), and writes RESULT tuples.
-3) A Prioritizer reads results and writes PRIORITY tuples based on risk/uncertainty so the human sees urgent/uncertain cases first.
-4) A Reviewer (CLI/UI) shows the top prioritized cases and writes REVIEW tuples containing the human decision.
-5) An Audit service records all important events in structured logs without storing raw sensitive data in tuples or logs.
+The system is coordinated using a shared tuple space (jSpace). Components do not call each other directly; instead, they coordinate via generative communication: they write tuples and atomically take tuples using pattern matching. This makes the system naturally distributed: processes can run on one or multiple computers.
 
-The ML model is pluggable: the same coordination system can be reused across different domains (hospital vs engineering) by swapping the model adapter and the data connector. The main focus is coordination, fault tolerance, and auditability in a distributed application using tuple spaces.
+### Workflow
 
-(≈200 words)
+1. **SpaceServer** hosts a tuple space and exposes a TCP gate.
+2. **Ingestor** creates a CASE and a TASK, then enqueues work as `AVAILABLE`.
+3. **Workers** compete for tasks using an atomic claim (`get(AVAILABLE, …)`), mark tasks as `IN_PROGRESS` with a lease deadline, perform inference (here: simple randomized scoring), and write `RESULT`.
+4. **Reaper** provides crash/timeout recovery by re-queuing tasks whose lease expired (handles slow or crashed workers).
+5. **Viewer** ranks results by uncertainty (triage view).
+6. **Reviewer** is a CLI for human decisions on flagged cases (approve/reject).
+7. **Audit log** records important events as structured entries (without storing sensitive raw data in tuples).
+
+The ML model is pluggable: the coordination logic (queueing, leasing, recovery, audit) is reusable across domains by swapping the model adapter and data ingestion.
 
 
 ## Contributors
 
 Project contributors:
 
-- [Your Name] ([your email])
-- [Name] ([email])
-- [Name] ([email])
-- [Name] ([email])
+- **Soheil** (s230880@student.dtu.dk)
+- **Adal** (234545@student.dtu.dk)
 
+### Contributions
 
-Contributions:
+- Design of main coordination aspects: Soheil, Adal  
+- Coding of main coordination aspects: Soheil, Adal  
+- Documentation (this README file): Soheil  
+- Videos: Soheil, Adal  
+- Other aspects (e.g. CLI tooling, test scenarios): Soheil, Adal  
 
-- Design of main coordination aspects: [Name], [Name].
-- Coding of main coordination aspects: [Name], [Name].
-- Documentation (this README file): [Name], [Name].
-- Videos: [Name], [Name].
-- Other aspects (e.g. coding of UI, etc.): [Name], [Name].
-
-IMPORTANT: The history of the repo shows that all members have been active contributors.
+**IMPORTANT:** The history of the repository shows that all members have been active contributors.
 
 
 ## Demo video
 
-Demo video: [PASTE LINK]
+- Demo video: https://youtu.be/paWE-GvDO1c?si=SR6srFgJOtMZ1ECE  
+- Running on multiple computers video: https://www.youtube.com/shorts/76W1ZtZfgFk  
 
-If your demo video uses one single computer (as it would be easier to screencast), please add a link to an additional video showing that it can also run on multiple computers.
-
-Running on multiple computers video: [PASTE LINK]
-
-As a back-up, please upload the videos as part of your submission.
+(Back-up videos are included in the submission.)
 
 
 ## Main coordination challenge
 
-### Challenge: “Exactly-once” task completion with failures (avoiding duplicates and stuck tasks)
+### Challenge: Distributed worker queue with failures
 
-We coordinate work using tuples like:
-- CASE(caseId, dataRef, createdTs, domain)
-- TASK(taskId, caseId, type, priority, status)
-- CLAIM(taskId, workerId, leaseExpiryTs)
-- RESULT(taskId, caseId, score, uncertainty, modelVersion, finishedTs)
-- PRIORITY(caseId, rankScore, reason, ts)
-- REVIEW(caseId, reviewerId, decision, comment, ts)
-- AUDIT(eventType, entityId, ts, payloadJson)
+We needed a distributed “worker queue” where multiple workers compete for tasks, but the system must remain correct if a worker crashes, hangs, or becomes slow. A naïve approach (workers simply take tasks and process them) risks lost tasks or duplicate results.
 
-The biggest coordination challenge is: multiple workers run in parallel, and workers can crash mid-task. We need to ensure:
-1) Tasks do not get “lost” (system must continue).
-2) We avoid duplicate processing as much as possible.
-3) If duplicates happen (due to failure/retry), the final state remains correct.
+The system must ensure:
 
-### Solution: Lease-based claiming + idempotent result handling
+1. Mutual exclusion when claiming work  
+2. No permanent task loss if a worker crashes  
+3. Progress despite failures  
+4. Controlled handling of duplicate results  
 
-When a worker takes a TASK, it immediately writes a CLAIM(taskId, workerId, leaseExpiryTs). The lease is a time limit: if the worker dies, the lease expires.
 
-A reaper/monitor process periodically checks for expired claims. If a CLAIM has expired and the TASK is still not DONE, it re-queues the task (or resets TASK status) so another worker can process it.
+### Solution: Lease-based claiming + timeout recovery (Reaper)
 
-To handle the possibility of duplicates (e.g., two workers complete around the same time), results are treated as idempotent: the system accepts the first valid RESULT for a task/case and ignores later duplicates or stores them for debugging. This prevents inconsistent final states while still allowing recovery.
+We represent work using tuples and implement a lease so task ownership expires automatically.
 
-This pattern addresses fault tolerance and coordination in a distributed worker-pool using tuple spaces: shared space for tasks, atomic operations for task pickup/claiming, and time-based leases for recovery.
+#### Key tuples (simplified)
 
-(Insert 1–2 small diagrams here: “task lifecycle” and “lease expiry recovery”.)
+- `("AVAILABLE", taskId, caseId, createdAt, attempt)`
+- `("IN_PROGRESS", taskId, caseId, workerId, startedAt, leaseUntil, attempt)`
+- `("RESULT", caseId, taskId, score, uncertainty, workerId, finishedAt)`
+- Audit events:  
+  `("AUDIT", ts, eventId, actorType, actorId, action, payloadJson)`
+
+#### State diagram (coordination logic)
+
+           Ingestor
+             |
+             v
+      ("AVAILABLE", ...)
+             |
+             | atomic get() by a Worker
+             v
+ ("IN_PROGRESS", ..., leaseUntil)
+             |
+     +-------+-------------------+
+     |                           |
+     | Worker finishes in time   | Worker crashes / stalls
+     v                           v
+  write RESULT                 Reaper detects leaseUntil < now
+  remove IN_PROGRESS           remove IN_PROGRESS
+  mark DONE                    re-put AVAILABLE (attempt+1)
+
+
+
+#### Why this is a coordination achievement
+
+- **Mutual exclusion / atomic claim:** `get(AVAILABLE, …)` ensures only one worker claims a task.
+- **Fault tolerance:** If a worker dies or exceeds the lease, the task is re-queued.
+- **Progress despite failures:** The system is self-healing as long as at least one worker is alive.
+- **Controlled duplicates:** A slow worker finishing after timeout must remove its exact `IN_PROGRESS` tuple to finalize. If this fails, the stale result is dropped and audited.
+
+This directly aligns with core course concepts: tuple spaces, atomic operations, and robust distributed coordination.
+
+
+## Programming language and coordination mechanism
+
+- **Language:** Java  
+- **Coordination mechanism:** jSpace (pSpaces tuple space library)
+
+We use:
+
+- `put(tuple)` to publish work, results, and audit events  
+- `get(template)` to atomically take a matching tuple (destructive read) — used for claims and exclusive ownership  
+- `queryAll(template)` for non-destructive reads (monitoring views like Viewer and AuditViewer)
+
+Coordination is done using Linda-style pattern matching on tuples (e.g., `ActualField("AVAILABLE")`, `FormalField(String.class)`), decoupling processes in time and space.
 
 
 ## Installation
 
 ### Requirements
-- Java (JDK 8+ recommended)
-- Maven
-- jSpace/pSpaces library available (either installed locally via `mvn install` from the jSpace repo, or fetched via Maven dependency)
 
-### Build
-From the project root:
+- Windows / macOS / Linux  
+- Java (JDK 17+ recommended)  
+- Maven 3.9+  
+
+### Step 1 - Install jSpace locally (required)
+
+jSpace must be installed into your local Maven repository.
+
+1. Download: https://github.com/pSpaces/jSpace/archive/master.zip  
+2. Unzip somewhere writable  
+3. Open a terminal in `jSpace-master/` (where `pom.xml` is located)  
+4. Run:
 
 ```bash
-mvn clean package
+mvn clean verify
+mvn install
+
+### Step 2 - Build this project
+from the repo root:
+
+cd triage-orchestrator
+mvn package
+
+### Running the project
+
+##Option A - Single computer (quick demo) 
+Open multiple terminals.
+
+Terminal 1 - spaceServer
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.SpaceServer
+
+
+Terminal 2 - Reaper
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Reaper
+
+
+Terminal 3 - worker 1
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Worker -Dexec.args="worker-1 0"
+
+
+Terminal 4 - worker 2
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Worker -Dexec.args="worker-2 0"
+
+
+Terminal 6 - viewer(uncertainty ranking)
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Viewer
+
+
+
+Terminal 7 - AuditViewer
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.AuditViewer
+
+
+
+Terminal 8 - Reviwer(Human decision)
+cd triage-orchestrator
+mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Reviewer -Dexec.args="reviewer-1"
+
+##Option B (Distributed demo) 
+1) Run SpaceServer on one computer (the host) and ensure the TCP port is reachable.
+2) On other computers, run Workers/Reviewer/etc. using:
+
+export SPACE_URI="tcp://<SERVER_IP>:9001/board?conn"
+
+(or on Windows PowerShell: $env:SPACE_URI="tcp://<SERVER_IP>:9001/board?conn")
+
+This demonstrates real distributed coordination: multiple machines competing for tasks in the same tuple space.
+
+
+## References:
+- pSpaces / jSpace (tuple spaces in Java): https://github.com/pSpaces/jSpace
+- Course modules (DTU 02148): tuple spaces, Linda-style coordination, distributed coordination patterns
+- Linda / generative communication background (tuple spaces): David Gelernter, “Generative Communication in Linda” (conceptual reference)
+- Martin Kleppmann, Designing Data-Intensive Applications (fault tolerance and distributed systems patterns; conceptual reference)
+
+
+
+
+
+
+
+
