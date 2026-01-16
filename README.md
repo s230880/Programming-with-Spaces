@@ -73,22 +73,22 @@ We represent work using tuples and implement a lease so task ownership expires a
 
 #### State diagram (coordination logic)
 
-           Ingestor
-             |
-             v
-      ("AVAILABLE", ...)
-             |
-             | atomic get() by a Worker
-             v
- ("IN_PROGRESS", ..., leaseUntil)
-             |
-     +-------+-------------------+
-     |                           |
-     | Worker finishes in time   | Worker crashes / stalls
-     v                           v
-  write RESULT                 Reaper detects leaseUntil < now
-  remove IN_PROGRESS           remove IN_PROGRESS
-  mark DONE                    re-put AVAILABLE (attempt+1)
+             Ingestor
+               |
+               v
+        ("AVAILABLE", ...)
+               |
+               | atomic get() by a Worker
+               v
+   ("IN_PROGRESS", ..., leaseUntil)
+               |
+       +-------+-------------------+
+       |                           |
+       | Worker finishes in time   | Worker crashes / stalls
+       v                           v
+    write RESULT                 Reaper detects leaseUntil < now
+    remove IN_PROGRESS           remove IN_PROGRESS
+    mark DONE                    re-put AVAILABLE (attempt+1)
 
 
 
