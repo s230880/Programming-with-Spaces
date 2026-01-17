@@ -30,11 +30,11 @@ Project contributors:
 
 - Design of main coordination aspects: Soheil, Adal  
 - Coding of main coordination aspects: Soheil, Adal  
-- Documentation (this README file): Soheil  
+- Documentation (this README file): Soheil, Adal  
 - Videos: Soheil, Adal  
 - Other aspects (e.g. CLI tooling, test scenarios): Soheil, Adal  
 
-**IMPORTANT:** The history of the repository shows that all members have been active contributors.
+**IMPORTANT:** We used one computer and met up consistently to work together; therefore the repository history does not show that all members have been active contributors.
 
 
 ## Demo video
@@ -102,10 +102,12 @@ mark DONE                           re-put AVAILABLE (attempt+1)
 
 - **Mutual exclusion / atomic claim:** `get(AVAILABLE, …)` ensures only one worker claims a task.
 - **Fault tolerance:** If a worker dies or exceeds the lease, the task is re-queued.
-- **Progress despite failures:** The system is self-healing as long as at least one worker is alive.
+- **Progress despite failures:** The system is self-healing as long as the SpaceServer is reachable and the Reaper and at least one Worker are running.
 - **Controlled duplicates:** A slow worker finishing after timeout must remove its exact `IN_PROGRESS` tuple to finalize. If this fails, the stale result is dropped and audited.
 
 This directly aligns with core course concepts: tuple spaces, atomic operations, and robust distributed coordination.
+
+Guarantees: at-least-once execution; no double-claim of AVAILABLE; expired leases are re-queued; late/stale results are dropped and audited; after MAX_ATTEMPTS tasks are escalated via REVIEW_TIMEOUT.
 
 
 ## Programming language and coordination mechanism
@@ -151,64 +153,7 @@ mvn package
 
 ### Running the project
 
-##Option A - Single computer (quick demo) 
-Open multiple terminals.
-
-Terminal 1 - spaceServer
-cd triage-orchestrator
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.SpaceServer
-
-
-Terminal 2 - Reaper
-cd triage-orchestrator
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Reaper
-
-
-Terminal 3 - worker 1
-
-cd triage-orchestrator
-
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Worker -Dexec.args="worker-1 0"
-
-
-Terminal 4 - worker 2
-
-cd triage-orchestrator
-
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Worker -Dexec.args="worker-2 0"
-
-
-Terminal 6 - viewer(uncertainty ranking)
-
-cd triage-orchestrator
-
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Viewer
-
-
-
-Terminal 7 - AuditViewer
-
-cd triage-orchestrator
-
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.AuditViewer
-
-
-
-Terminal 8 - Reviwer(Human decision)
-
-cd triage-orchestrator
-
-mvn -DskipTests exec:java -Dexec.mainClass=dtu.project.triage.Reviewer -Dexec.args="reviewer-1"
-
-##Option B (Distributed demo) 
-1) Run SpaceServer on one computer (the host) and ensure the TCP port is reachable.
-2) On other computers, run Workers/Reviewer/etc. using:
-
-export SPACE_URI="tcp://<SERVER_IP>:9001/board?conn"
-
-(or on Windows PowerShell: $env:SPACE_URI="tcp://<SERVER_IP>:9001/board?conn")
-
-This demonstrates real distributed coordination: multiple machines competing for tasks in the same tuple space.
+Use triage-orchestrator/RUNBOOK.md for the exact PowerShell commands
 
 
 ## References:
