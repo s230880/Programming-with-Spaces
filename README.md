@@ -92,6 +92,7 @@ write RESULT                        remove IN_PROGRESS
 mark DONE                           re-put AVAILABLE (attempt+1)
                                     (or escalate after max attempts)
 
+```
 
 
 
