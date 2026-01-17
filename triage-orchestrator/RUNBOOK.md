@@ -1,16 +1,16 @@
-﻿\# Runbook (PowerShell)
+﻿# Runbook (PowerShell)
 
 
 
-\## 0) Open terminals in the correct folder (IMPORTANT)
+## 0) Open terminals in the correct folder (IMPORTANT)
 
 In every terminal, first run:
 
 
 
-cd $HOME\\Documents\\code\\Programming-with-Spaces\\triage-orchestrator
+cd $HOME\Documents\code\Programming-with-Spaces\triage-orchestrator
 
-$env:Path += ";C:\\tools\\apache-maven-3.9.12\\bin"
+$env:Path += ";C:\tools\apache-maven-3.9.12\bin"
 
 
 
@@ -26,9 +26,9 @@ java -version
 
 
 
-\## Reset (recommended between demos)
+## Reset (recommended between demos)
 
-Stop \*\*SpaceServer\*\* and start it again to clear all tuples (fresh run).
+Stop **SpaceServer** and start it again to clear all tuples (fresh run).
 
 
 
@@ -36,11 +36,11 @@ Stop \*\*SpaceServer\*\* and start it again to clear all tuples (fresh run).
 
 
 
-\# Option A: Single computer demo (recommended for grading)
+# Option A: Single computer demo (recommended for grading)
 
 
 
-\## Terminal 1: SpaceServer
+## Terminal 1: SpaceServer
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.SpaceServer"
 
@@ -48,19 +48,19 @@ Expected: prints that a TCP gate/space is running (listening on port 9001).
 
 
 
-\## Terminal 2: Reaper (timeout recovery)
+## Terminal 2: Reaper (timeout recovery)
 
-$env:LEASE\_MS="15000"
+$env:LEASE_MS="15000"
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.Reaper"
 
-Expected: periodically scans IN\_PROGRESS and re-queues expired leases.
+Expected: periodically scans IN_PROGRESS and re-queues expired leases.
 
 
 
-\## Terminal 3: Worker 1 (slow worker to trigger timeout)
+## Terminal 3: Worker 1 (slow worker to trigger timeout)
 
-$env:LEASE\_MS="15000"
+$env:LEASE_MS="15000"
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.Worker" "-Dexec.args=worker-1 30000"
 
@@ -68,9 +68,9 @@ Expected: claims tasks and may finish late (after the lease) due to 30s delay.
 
 
 
-\## Terminal 4: Worker 2 (fast worker)
+## Terminal 4: Worker 2 (fast worker)
 
-$env:LEASE\_MS="15000"
+$env:LEASE_MS="15000"
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.Worker" "-Dexec.args=worker-2 0"
 
@@ -78,7 +78,7 @@ Expected: claims tasks and completes within the lease window.
 
 
 
-\## Terminal 5: Ingest cases
+## Terminal 5: Ingest cases
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.Ingestor"
 
@@ -86,7 +86,7 @@ Expected: puts CASE/TASK tuples and enqueues AVAILABLE work.
 
 
 
-\## Terminal 6: Viewer (rank results by uncertainty)
+## Terminal 6: Viewer (rank results by uncertainty)
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.Viewer"
 
@@ -94,9 +94,9 @@ Expected: shows results ordered by uncertainty (highest uncertainty first).
 
 
 
-\## Terminal 7: Human review demo (lower threshold so review triggers)
+## Terminal 7: Human review demo (lower threshold so review triggers)
 
-$env:REVIEW\_THRESHOLD="0.30"
+$env:REVIEW_THRESHOLD="0.30"
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.Reviewer" "-Dexec.args=reviewer-1"
 
@@ -104,7 +104,7 @@ Expected: prompts for approve/reject decisions on flagged cases.
 
 
 
-\## Terminal 8: Audit log viewer
+## Terminal 8: Audit log viewer
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.AuditViewer"
 
@@ -116,75 +116,75 @@ Expected: shows structured audit events (claims, re-queues, stale drops, reviews
 
 
 
-\# Demo checklist (coordination evidence)
+# Demo checklist (coordination evidence)
 
 
 
-\## A) Mutual exclusion (competing workers)
+## A) Mutual exclusion (competing workers)
 
 Steps:
 
-1\) Start SpaceServer, Reaper, Worker 1, Worker 2
+1) Start SpaceServer, Reaper, Worker 1, Worker 2
 
-2\) Run Ingestor
+2) Run Ingestor
 
 Expected:
 
-\- Each AVAILABLE task is atomically claimed by exactly one worker (no double-claim).
+- Each AVAILABLE task is atomically claimed by exactly one worker (no double-claim).
 
-\- Audit shows one "CLAIMED/START" per task attempt.
+- Audit shows TASK_STARTED per attempt (and TASK_REQUEUED_TIMEOUT / TASK_STALE_RESULT_DROPPED when relevant).
 
 
 
-\## B) Crash/timeout recovery (lease + reaper)
+## B) Crash/timeout recovery (lease + reaper)
 
 Setup:
 
-\- Worker 1 has 30s delay, LEASE\_MS=15000 (15s)
+- Worker 1 has 30s delay, LEASE_MS=15000 (15s)
 
 Steps:
 
-1\) Run Ingestor
+1) Run Ingestor
 
 Expected:
 
-\- Reaper detects lease expiry and re-queues tasks (attempt increments).
+- Reaper detects lease expiry and re-queues tasks (attempt increments).
 
-\- Worker 2 (fast) completes re-queued tasks.
+- Worker 2 (fast) completes re-queued tasks.
 
-\- Late results from slow worker are treated as stale (dropped) and audited.
+- Late results from slow worker are treated as stale (dropped) and audited.
 
 
 
-\## C) Reaper offline test (shows dependency)
+## C) Reaper offline test (shows dependency)
 
 Steps:
 
-1\) Start SpaceServer + Workers (do NOT start Reaper yet)
+1) Start SpaceServer + Workers (do NOT start Reaper yet)
 
-2\) Run Ingestor (some tasks will be claimed and may time out)
+2) Run Ingestor (some tasks will be claimed and may time out)
 
-3\) Start Reaper
+3) Start Reaper
 
 Expected:
 
-\- Without Reaper, expired IN\_PROGRESS can stall.
+- Without Reaper, expired IN_PROGRESS can stall.
 
-\- When Reaper starts, it recovers expired leases and progress resumes.
+- When Reaper starts, it recovers expired leases and progress resumes.
 
 
 
-\## D) Worker crash test (optional, strong evidence)
+## D) Worker crash test (optional, strong evidence)
 
 Steps:
 
-1\) Start SpaceServer + Reaper + at least one Worker
+1) Start SpaceServer + Reaper + at least one Worker
 
-2\) While a worker has claimed work (IN\_PROGRESS), close that worker terminal
+2) While a worker has claimed work (IN_PROGRESS), close that worker terminal
 
 Expected:
 
-\- After lease expiry, Reaper re-queues the task and another worker completes it.
+- After lease expiry, Reaper re-queues the task and another worker completes it.
 
 
 
@@ -192,35 +192,35 @@ Expected:
 
 
 
-\# Option B: Distributed mode (multiple computers)
+# Option B: Distributed mode (multiple computers)
 
 
 
-\## 1) Run SpaceServer on a host machine
+## 1) Run SpaceServer on a host machine
 
-\- Ensure TCP port 9001 is reachable from other machines (firewall may need allowing inbound 9001).
+- Ensure TCP port 9001 is reachable from other machines (firewall may need allowing inbound 9001).
 
 
 
 On the host machine:
 
-cd $HOME\\Documents\\code\\Programming-with-Spaces\\triage-orchestrator
+cd $HOME\Documents\code\Programming-with-Spaces\triage-orchestrator
 
-$env:Path += ";C:\\tools\\apache-maven-3.9.12\\bin"
+$env:Path += ";C:\tools\apache-maven-3.9.12\bin"
 
 mvn -q -DskipTests exec:java "-Dexec.mainClass=dtu.project.triage.SpaceServer"
 
 
 
-\## 2) On each client machine, set SPACE\_URI and run components
+## 2) On each client machine, set SPACE_URI and run components
 
-PowerShell (replace <SERVER\_IP>):
+PowerShell (replace <SERVER_IP>):
 
-cd $HOME\\Documents\\code\\Programming-with-Spaces\\triage-orchestrator
+cd $HOME\Documents\code\Programming-with-Spaces\triage-orchestrator
 
-$env:Path += ";C:\\tools\\apache-maven-3.9.12\\bin"
+$env:Path += ";C:\tools\apache-maven-3.9.12\bin"
 
-$env:SPACE\_URI="tcp://<SERVER\_IP>:9001/board?conn"
+$env:SPACE_URI="tcp://<SERVER_IP>:9001/board?conn"
 
 
 
@@ -230,7 +230,7 @@ Then run Workers / Reaper / Viewer / Reviewer exactly as in Option A.
 
 Expected:
 
-\- Multiple machines compete for tasks via the same tuple space (true distributed coordination).
+- Multiple machines compete for tasks via the same tuple space (true distributed coordination).
 
 
 
@@ -238,35 +238,35 @@ Expected:
 
 
 
-\# Troubleshooting
+# Troubleshooting
 
 
 
-\## Maven not found
+## Maven not found
 
 Run:
 
-$env:Path += ";C:\\tools\\apache-maven-3.9.12\\bin"
+$env:Path += ";C:\tools\apache-maven-3.9.12\bin"
 
 mvn -v
 
 
 
-\## Wrong folder / "pom.xml not found"
+## Wrong folder / "pom.xml not found"
 
 Make sure you are in:
 
-cd $HOME\\Documents\\code\\Programming-with-Spaces\\triage-orchestrator
+cd $HOME\Documents\code\Programming-with-Spaces\triage-orchestrator
 
 
 
-\## Distributed clients can’t connect
+## Distributed clients can’t connect
 
-\- Verify the server IP is correct.
+- Verify the server IP is correct.
 
-\- Check firewall rules on the host for inbound TCP 9001.
+- Check firewall rules on the host for inbound TCP 9001.
 
-\- Ensure host and client are on the same network / routing is allowed.
+- Ensure host and client are on the same network / routing is allowed.
 
 
 
